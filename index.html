@@ -5,30 +5,202 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Голосовой Ассистент</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 2rem auto; padding: 1rem; background: #f5f5f5; }
-        .chat-container { background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); min-height: 400px; display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; max-height: 60vh; }
-        .message { padding: 0.75rem 1rem; border-radius: 8px; max-width: 85%; line-height: 1.4; word-wrap: break-word; }
-        .user { background: #007bff; color: white; align-self: flex-end; }
-        .assistant { background: #e9ecef; color: #333; align-self: flex-start; white-space: pre-wrap; }
-        .controls { display: flex; gap: 0.5rem; margin-top: 1rem; }
-        input { flex: 1; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; outline: none; transition: border-color 0.2s; }
-        input:focus { border-color: #007bff; }
-        button { padding: 0.75rem 1.5rem; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; transition: all 0.2s; font-weight: 500; white-space: nowrap; }
-        #micBtn { background: #dc3545; color: white; }
-        #micBtn.recording { background: #a71d2a; animation: pulse 1.5s infinite; }
-        #sendBtn { background: #28a745; color: white; }
-        @keyframes pulse { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); } }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body { 
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
+            max-width: 600px; 
+            margin: 3rem auto; 
+            padding: 1rem; 
+            background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h2 {
+            color: #2d3748;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .chat-container { 
+            background: rgba(255, 255, 255, 0.7); 
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 24px; 
+            padding: 1.5rem; 
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.15); 
+            min-height: 500px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 1rem; 
+            overflow-y: auto; 
+            max-height: 65vh; 
+            scroll-behavior: smooth;
+        }
+
+        .chat-container::-webkit-scrollbar { width: 6px; }
+        .chat-container::-webkit-scrollbar-thumb { background-color: rgba(0, 0, 0, 0.1); border-radius: 10px; }
+
+        .message { 
+            padding: 12px 18px; 
+            border-radius: 20px; 
+            max-width: 85%; 
+            line-height: 1.5; 
+            word-wrap: break-word; 
+            font-size: 0.95rem;
+            animation: fadeIn 0.3s ease-out;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .user { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            color: white; 
+            align-self: flex-end; 
+            border-bottom-right-radius: 4px;
+        }
+
+        .assistant { 
+            background: #ffffff; 
+            color: #2d3748; 
+            align-self: flex-start; 
+            white-space: pre-wrap;
+            border-bottom-left-radius: 4px;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .controls { 
+            display: flex; 
+            gap: 0.5rem; 
+            margin-top: 1.5rem; 
+            background: rgba(255, 255, 255, 0.7);
+            padding: 0.5rem;
+            border-radius: 50px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            backdrop-filter: blur(10px);
+        }
+
+        input { 
+            flex: 1; 
+            padding: 0.75rem 1rem; 
+            border: 1px solid transparent; 
+            border-radius: 40px; 
+            font-size: 1rem; 
+            outline: none; 
+            background: transparent;
+            transition: all 0.2s; 
+            font-family: 'Inter', sans-serif;
+            color: #2d3748;
+        }
+
+        input:focus { background: white; }
+
+        button { 
+            padding: 0.75rem 1.5rem; 
+            border: none; 
+            border-radius: 40px; 
+            cursor: pointer; 
+            font-size: 0.95rem; 
+            transition: all 0.2s; 
+            font-weight: 600; 
+            white-space: nowrap;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
+        button:active { transform: translateY(0); }
+        
+        /* Стили для иконок внутри кнопок */
+        button svg { display: block; }
+
+        #micBtn { 
+            background: #ffe4e6; 
+            color: #e11d48; 
+            padding: 0 20px;
+        }
+
+        #micBtn:hover { background: #fecdd3; }
+
+        #micBtn.recording { 
+            background: #e11d48; 
+            color: white;
+            animation: pulse 1.5s infinite; 
+        }
+
+        @keyframes pulse { 
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.7); } 
+            50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(225, 29, 72, 0); } 
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(225, 29, 72, 0); } 
+        }
+
+        #sendBtn { 
+            background: #10b981; 
+            color: white; 
+            width: 50px;
+            height: 50px;
+            padding: 0;
+        }
+
+        #sendBtn:hover { background: #059669; }
     </style>
 </head>
 <body>
-    <h2>🎙️ Голосовой Ассистент</h2>
+    <h2>
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #764ba2;">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" x2="12" y1="19" y2="22"></line>
+            <line x1="8" x2="16" y1="22" y2="22"></line>
+        </svg>
+        Голосовой Ассистент
+    </h2>
+    
     <div class="chat-container" id="chatContainer">
         <div class="message assistant">Привет! Я готов помочь. Скажи или напиши, что нужно сделать.</div>
     </div>
+    
     <div class="controls">
-        <button id="micBtn">🎤 Говорить</button>
+        <button id="micBtn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" y1="19" x2="12" y2="23"></line>
+                <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+            <span id="micText">Говорить</span>
+        </button>
+        
         <input type="text" id="textInput" placeholder="Или введите текст здесь...">
-        <button id="sendBtn">➤</button>
+        
+        <button id="sendBtn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+        </button>
     </div>
 
     <script>
@@ -36,6 +208,9 @@
         const textInput = document.getElementById('textInput');
         const sendBtn = document.getElementById('sendBtn');
         const micBtn = document.getElementById('micBtn');
+
+        const svgMic = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`;
+        const svgStop = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12"></rect></svg>`;
 
         let sessionId = localStorage.getItem('sessionId') || null;
 
@@ -58,14 +233,14 @@
             recognition.onstart = () => {
                 isRecording = true;
                 finalTranscript = '';
-                micBtn.textContent = '🛑 Слушаю...';
+                micBtn.innerHTML = `${svgStop} <span>Слушаю...</span>`;
                 micBtn.classList.add('recording');
                 
                 noSpeechTimer = setTimeout(() => {
                     if (isRecording && finalTranscript.trim() === '') {
                         recognition.stop();
                         isRecording = false;
-                        micBtn.textContent = '🎤 Говорить';
+                        micBtn.innerHTML = `${svgMic} <span>Говорить</span>`;
                         micBtn.classList.remove('recording');
                     }
                 }, NO_SPEECH_TIMEOUT);
@@ -99,7 +274,7 @@
                 if (isRecording) {
                     try { recognition.start(); } catch (e) {}
                 } else {
-                    micBtn.textContent = '🎤 Говорить';
+                    micBtn.innerHTML = `${svgMic} <span>Говорить</span>`;
                     micBtn.classList.remove('recording');
                 }
             };
@@ -108,13 +283,13 @@
                 if (event.error === 'no-speech') {
                 } else {
                     isRecording = false;
-                    micBtn.textContent = '🎤 Говорить';
+                    micBtn.innerHTML = `${svgMic} <span>Говорить</span>`;
                     micBtn.classList.remove('recording');
                 }
             };
         } else {
             micBtn.disabled = true;
-            micBtn.textContent = '🎤 Не поддерживается';
+            micBtn.innerHTML = `<span>🎤 Не поддерживается</span>`;
         }
 
         micBtn.addEventListener('click', () => {
