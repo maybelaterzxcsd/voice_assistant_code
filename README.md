@@ -77,6 +77,7 @@ voice_assistant/
 ├── .gitignore
 ├── events.csv
 ├── index.html
+├── LICENSE
 ├── README.md
 └── requirements.txt
 ```
