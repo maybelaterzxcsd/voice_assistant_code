@@ -12,3 +12,4 @@ class Event(Base):
     time = Column(String, nullable=True)     
     created_at = Column(DateTime, default=datetime.utcnow)
     status = Column(String, default="pending")
+    recurrence = Column(String, nullable=True) 

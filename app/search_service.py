@@ -10,7 +10,7 @@ import re
 
 
 def get_upcoming_events(db: Session, period: str):
-    """Возвращает события на сегодня, завтра, послезавтра или на неделю."""
+    """Возвращает события на сегодня, завтра, послезавтра, на неделю или на прошлую неделю."""
     today = datetime.now().date()
     
     if period == "tomorrow":
@@ -28,15 +28,27 @@ def get_upcoming_events(db: Session, period: str):
         ).order_by(Event.time.asc()).all()
         
     elif period == "this_week":
-        start_of_week = today - timedelta(days=today.weekday())
-        end_of_week = start_of_week + timedelta(days=6)
+        start_date = today.strftime("%Y-%m-%d")
+        end_of_week = today + timedelta(days=(6 - today.weekday()))
+        end_date = end_of_week.strftime("%Y-%m-%d")
+        
         events = db.query(Event).filter(
             Event.status == "pending",
-            Event.date >= start_of_week.strftime("%Y-%m-%d"),
-            Event.date <= end_of_week.strftime("%Y-%m-%d")
+            Event.date >= start_date,
+            Event.date <= end_date
+        ).order_by(Event.date.asc(), Event.time.asc()).all()
+
+    elif period == "last_week":
+        start_of_last_week = today - timedelta(days=today.weekday() + 7)
+        end_of_last_week = start_of_last_week + timedelta(days=6)
+        
+        events = db.query(Event).filter(
+            Event.status == "pending",
+            Event.date >= start_of_last_week.strftime("%Y-%m-%d"),
+            Event.date <= end_of_last_week.strftime("%Y-%m-%d")
         ).order_by(Event.date.asc(), Event.time.asc()).all()
         
-    else:
+    else: 
         events = db.query(Event).filter(
             Event.status == "pending",
             Event.date == today.strftime("%Y-%m-%d")

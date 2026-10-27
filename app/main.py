@@ -1,6 +1,7 @@
 import json
 import re
 import os
+import calendar
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -159,17 +160,55 @@ def handle_clarification(user_text: str, session, db: Session) -> ChatResponse:
         
         if missing_fields:
             question = _build_clarification_question(missing_fields, merged_type)
-            session.pending_event = PendingEvent(event_type=merged_type, title=merged_title, date=merged_date, time=merged_time, missing_fields=missing_fields)
+            session.pending_event = PendingEvent(
+                event_type=merged_type, 
+                title=merged_title, 
+                date=merged_date, 
+                time=merged_time, 
+                recurrence=pending.recurrence, 
+                missing_fields=missing_fields
+            )
             return ChatResponse(response=get_response("clarification_ask", question=question), intent="clarification", session_id=session.session_id)
         
-        new_event = Event(event_type=merged_type, title=merged_title, date=merged_date, time=merged_time, status="pending")
-        db.add(new_event)
-        db.commit()
-        db.refresh(new_event)
-        print(f"✅ СОЗДАНА ЗАДАЧА: ID={new_event.id}, Title={new_event.title}, Date={new_event.date}")
-        session.pending_event = None
-        template_key = f"created_{merged_type}" if merged_type in ("task", "meeting", "reminder") else "created"
-        return ChatResponse(response=get_response(template_key, title=merged_title, date=merged_date, time=merged_time), intent="clarification", data={"event_id": new_event.id}, session_id=session.session_id)
+        recurrence = pending.recurrence
+        events_created = 0
+        
+        if recurrence:
+            current_date = datetime.strptime(merged_date, "%Y-%m-%d")
+            for i in range(5):
+                if recurrence == "daily":
+                    new_date = (current_date + timedelta(days=i)).strftime("%Y-%m-%d")
+                elif recurrence == "weekly":
+                    new_date = (current_date + timedelta(weeks=i)).strftime("%Y-%m-%d")
+                elif recurrence == "monthly":
+                    new_month = current_date.month + i
+                    new_year = current_date.year + (new_month - 1) // 12
+                    new_month = (new_month - 1) % 12 + 1
+                    last_day = calendar.monthrange(new_year, new_month)[1]
+                    new_day = min(current_date.day, last_day)
+                    new_date = datetime(new_year, new_month, new_day).strftime("%Y-%m-%d")
+                else:
+                    new_date = merged_date
+                
+                new_event = Event(event_type=merged_type, title=merged_title, date=new_date, time=merged_time, status="pending", recurrence=recurrence)
+                db.add(new_event)
+                events_created += 1
+            db.commit()
+            session.pending_event = None
+            return ChatResponse(
+                response=f"✅ Создана повторяющаяся задача: «{merged_title}» ({recurrence}) на {events_created} раз(а) вперед.", 
+                intent="clarification", 
+                session_id=session.session_id
+            )
+        else:
+            new_event = Event(event_type=merged_type, title=merged_title, date=merged_date, time=merged_time, status="pending", recurrence=None)
+            db.add(new_event)
+            db.commit()
+            db.refresh(new_event)
+            print(f"✅ СОЗДАНА ЗАДАЧА: ID={new_event.id}, Title={new_event.title}, Date={new_event.date}")
+            session.pending_event = None
+            template_key = f"created_{merged_type}" if merged_type in ("task", "meeting", "reminder") else "created"
+            return ChatResponse(response=get_response(template_key, title=merged_title, date=merged_date, time=merged_time), intent="clarification", data={"event_id": new_event.id}, session_id=session.session_id)
 
 
 def handle_create(user_text: str, session, db: Session) -> ChatResponse:
@@ -185,6 +224,7 @@ def handle_create(user_text: str, session, db: Session) -> ChatResponse:
             title=event_data.get("title", user_text), 
             date=event_data.get("date"), 
             time=event_data.get("time"), 
+            recurrence=event_data.get("recurrence"),
             missing_fields=event_data.get("missing_fields", [])
         )
         return ChatResponse(response=get_response("clarification_ask", question=event_data.get("clarification_question", "Уточни детали.")), intent="create", session_id=session.session_id)
@@ -203,7 +243,6 @@ def handle_create(user_text: str, session, db: Session) -> ChatResponse:
             days_ahead = (7 - today.weekday()) % 7 or 7
             event_date = (today + timedelta(days=days_ahead + 7)).strftime("%Y-%m-%d")
         elif "к концу месяца" in text_lower or "до конца месяца" in text_lower:
-            import calendar
             today = datetime.now().date()
             last_day = calendar.monthrange(today.year, today.month)[1]
             event_date = datetime(today.year, today.month, last_day).date().strftime("%Y-%m-%d")
@@ -211,50 +250,90 @@ def handle_create(user_text: str, session, db: Session) -> ChatResponse:
             event_date = datetime.now().date().strftime("%Y-%m-%d")
     
     event_time = event_data.get("time")
+    recurrence = event_data.get("recurrence")
     
-    if event_data.get("event_type") == "meeting" and event_time:
-        conflict = db.query(Event).filter(
+    if not recurrence:
+        if event_data.get("event_type") == "meeting" and event_time:
+            conflict = db.query(Event).filter(
+                Event.date == event_date,
+                Event.time == event_time,
+                Event.status == "pending",
+                Event.event_type == "meeting"
+            ).first()
+            if conflict:
+                return ChatResponse(
+                    response=f"⚠️ У вас уже есть встреча на это время: «{conflict.title}» ({_human_date(conflict.date)} {_human_time(conflict.time)}). Пожалуйста, выберите другое время.",
+                    intent="create",
+                    session_id=session.session_id
+                )
+
+        existing = db.query(Event).filter(
+            Event.title == event_data.get("title"),
             Event.date == event_date,
             Event.time == event_time,
-            Event.status == "pending",
-            Event.event_type == "meeting"
+            Event.status == "pending"
         ).first()
-        if conflict:
-            return ChatResponse(
-                response=f"⚠️ У вас уже есть встреча на это время: «{conflict.title}» ({_human_date(conflict.date)} {_human_time(conflict.time)}). Пожалуйста, выберите другое время.",
-                intent="create",
-                session_id=session.session_id
-            )
+        
+        if existing:
+            return ChatResponse(response=f"Такое событие уже есть: '{existing.title}' на {_human_date(existing.date)} {_human_time(existing.time)}.", intent="create", session_id=session.session_id)
 
-    existing = db.query(Event).filter(
-        Event.title == event_data.get("title"),
-        Event.date == event_date,
-        Event.time == event_data.get("time"),
-        Event.status == "pending"
-    ).first()
-    
-    if existing:
-        return ChatResponse(response=f"Такое событие уже есть: '{existing.title}' на {_human_date(existing.date)} {_human_time(existing.time)}.", intent="create", session_id=session.session_id)
-    
-    new_event = Event(
-        event_type=event_data.get("event_type", "task"), 
-        title=event_data.get("title", user_text), 
-        date=event_date, 
-        time=event_data.get("time"), 
-        status="pending"
-    )
-    db.add(new_event)
+    events_created = 0
+    if recurrence:
+        current_date = datetime.strptime(event_date, "%Y-%m-%d")
+        for i in range(5):
+            if recurrence == "daily":
+                new_date = (current_date + timedelta(days=i)).strftime("%Y-%m-%d")
+            elif recurrence == "weekly":
+                new_date = (current_date + timedelta(weeks=i)).strftime("%Y-%m-%d")
+            elif recurrence == "monthly":
+                new_month = current_date.month + i
+                new_year = current_date.year + (new_month - 1) // 12
+                new_month = (new_month - 1) % 12 + 1
+                last_day = calendar.monthrange(new_year, new_month)[1]
+                new_day = min(current_date.day, last_day)
+                new_date = datetime(new_year, new_month, new_day).strftime("%Y-%m-%d")
+            else:
+                new_date = event_date
+            
+            new_event = Event(
+                event_type=event_data.get("event_type", "task"), 
+                title=event_data.get("title", user_text), 
+                date=new_date, 
+                time=event_time, 
+                status="pending",
+                recurrence=recurrence
+            )
+            db.add(new_event)
+            events_created += 1
+    else:
+        new_event = Event(
+            event_type=event_data.get("event_type", "task"), 
+            title=event_data.get("title", user_text), 
+            date=event_date, 
+            time=event_time, 
+            status="pending",
+            recurrence=None
+        )
+        db.add(new_event)
+        events_created = 1
+
     db.commit()
-    db.refresh(new_event)
-    print(f"✅ СОЗДАНА ЗАДАЧА: ID={new_event.id}, Title={new_event.title}, Date={new_event.date}")
     
-    template_key = f"created_{event_data.get('event_type', 'task')}"
-    return ChatResponse(
-        response=get_response(template_key, title=event_data.get('title'), date=event_date, time=event_data.get('time')), 
-        intent="create", 
-        data={"event_id": new_event.id}, 
-        session_id=session.session_id
-    )
+    if recurrence:
+        return ChatResponse(
+            response=f"✅ Создана повторяющаяся задача: «{event_data.get('title')}» ({recurrence}) на {events_created} раз(а) вперед.", 
+            intent="create", 
+            session_id=session.session_id
+        )
+    else:
+        db.refresh(new_event)
+        template_key = f"created_{event_data.get('event_type', 'task')}"
+        return ChatResponse(
+            response=get_response(template_key, title=event_data.get('title'), date=event_date, time=event_time), 
+            intent="create", 
+            data={"event_id": new_event.id}, 
+            session_id=session.session_id
+        )
 
 
 def handle_search(user_text: str, db: Session) -> ChatResponse:
@@ -268,10 +347,17 @@ def handle_search(user_text: str, db: Session) -> ChatResponse:
 
 def handle_upcoming(user_text: str, db: Session) -> ChatResponse:
     text_lower = user_text.lower()
-    if "послезавтра" in text_lower: period = "day_after_tomorrow"
-    elif "завтра" in text_lower: period = "tomorrow"
-    elif "недел" in text_lower or "ближайш" in text_lower or "вообще" in text_lower: period = "this_week"
-    else: period = "today"
+    
+    if "прошл" in text_lower and "недел" in text_lower: 
+        period = "last_week"
+    elif "послезавтра" in text_lower: 
+        period = "day_after_tomorrow"
+    elif "завтра" in text_lower: 
+        period = "tomorrow"
+    elif "недел" in text_lower or "ближайш" in text_lower or "вообще" in text_lower: 
+        period = "this_week"
+    else: 
+        period = "today"
     
     event_type_filter = None
     if "по задачам" in text_lower or "по зада" in text_lower or "задач" in text_lower: event_type_filter = "task"
@@ -282,7 +368,13 @@ def handle_upcoming(user_text: str, db: Session) -> ChatResponse:
     if event_type_filter:
         events = [e for e in events if e.get("type") == event_type_filter]
     
-    period_names = {"today": "сегодня", "tomorrow": "завтра", "day_after_tomorrow": "послезавтра", "this_week": "этой неделе"}
+    period_names = {
+        "today": "сегодня", 
+        "tomorrow": "завтра", 
+        "day_after_tomorrow": "послезавтра", 
+        "this_week": "этой неделе",
+        "last_week": "прошлой неделе"
+    }
     
     if not events:
         return ChatResponse(response=get_response("empty", period=period_names.get(period, period)), intent="upcoming")

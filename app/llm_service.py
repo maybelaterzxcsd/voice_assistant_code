@@ -1,7 +1,7 @@
 """
 llm_service.py - Мозг голосового ассистента (Final Version).
 GigaChat только извлекает текст, все даты считает Python.
-Поддерживает: создание, поиск, перенос, удаление, отметку выполненной.
+Поддерживает: создание, поиск, перенос, удаление, отметку выполненной, повторения.
 """
 
 import json
@@ -284,6 +284,7 @@ class LLMAssistant:
 - title: 3-6 слов, сохрани смысл
 - date_text: КАК ПОЛЬЗОВАТЕЛЬ СКАЗАЛ ДАТУ (например: "завтра", "в пятницу", "26 октября", "до конца недели"). Если даты нет - null.
 - time_text: КАК ПОЛЬЗОВАТЕЛЬ СКАЗАЛ ВРЕМЯ (например: "в 10 утра", "в 15:00"). Если времени нет - null.
+- recurrence_text: ЕСЛИ пользователь сказал про повторение (например: "каждый день", "каждую пятницу", "еженедельно"). Иначе - null.
 - needs_clarification: true, если не хватает критичных данных
 - clarification_question: короткий естественный вопрос (без markdown, без кавычек)
 
@@ -350,6 +351,15 @@ class LLMAssistant:
         date = parse_date_expression(date_text) if date_text else None
         time = parse_time_expression(time_text) if time_text else None
         
+        rec_text = data.get("recurrence_text", "").lower() if data.get("recurrence_text") else ""
+        recurrence = None
+        if "каждый день" in rec_text or "ежедневно" in rec_text: recurrence = "daily"
+        elif any(w in rec_text for w in ["каждую неделю", "еженедельно", "каждый понедельник", "каждую пятницу"]): recurrence = "weekly"
+        elif "каждый месяц" in rec_text or "ежемесячно" in rec_text: recurrence = "monthly"
+        
+        if recurrence and not date:
+            date = datetime.now().date().strftime("%Y-%m-%d")
+        
         needs_clarification = data.get("needs_clarification", False)
         clarification_question = data.get("clarification_question", "")
         missing_fields = data.get("missing_fields", [])
@@ -376,6 +386,7 @@ class LLMAssistant:
             "title": data.get("title", original_text),
             "date": date,
             "time": time,
+            "recurrence": recurrence,
             "needs_clarification": needs_clarification,
             "clarification_question": clarification_question,
             "missing_fields": missing_fields
@@ -394,7 +405,7 @@ class LLMAssistant:
                 break
                 
         return {
-            "event_type": event_type, "title": user_text, "date": date, "time": time,
+            "event_type": event_type, "title": user_text, "date": date, "time": time, "recurrence": None,
             "needs_clarification": not date, "clarification_question": "На какую дату?", "missing_fields": ["date"] if not date else []
         }
 

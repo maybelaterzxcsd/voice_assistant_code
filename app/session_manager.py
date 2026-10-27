@@ -15,6 +15,7 @@ class PendingEvent:
     title: str
     date: Optional[str] = None
     time: Optional[str] = None
+    recurrence: Optional[str] = None
     missing_fields: List[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
 
