@@ -94,10 +94,10 @@
             margin-top: 1.5rem; 
             background: rgba(255, 255, 255, 0.7);
             padding: 0.5rem;
-            border-radius: 24px; /* Чуть увеличили радиус для textarea */
+            border-radius: 50px; /* Круглые края как у кнопок */
             box-shadow: 0 4px 15px rgba(0,0,0,0.05);
             backdrop-filter: blur(10px);
-            align-items: flex-end; /* Выравниваем по нижнему краю, когда textarea растет */
+            align-items: flex-end; /* Прижимаем кнопки к низу при растягивании */
         }
 
         /* Стили для textarea */
@@ -113,10 +113,11 @@
             font-family: 'Inter', sans-serif;
             color: #2d3748;
             resize: none; /* Запрещаем вручную менять размер */
+            height: 50px; /* Минимальная высота, как у кнопок */
+            min-height: 50px;
             max-height: 120px; /* Максимальная высота */
             overflow-y: hidden; /* Скрываем скролл, пока не достигнут максимум */
             line-height: 1.5;
-            margin-bottom: 2px; /* Небольшой отступ, чтобы не прилипало */
         }
 
         textarea:focus { background: white; }
@@ -136,6 +137,7 @@
             justify-content: center;
             gap: 8px;
             height: 50px; /* Фиксируем высоту кнопок */
+            flex-shrink: 0; /* Кнопки не сжимаются */
         }
 
         button:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
@@ -200,7 +202,6 @@
             <span id="micText">Говорить</span>
         </button>
         
-        <!-- ИЗМЕНЕНО: input заменен на textarea -->
         <textarea id="textInput" placeholder="Или введите текст здесь..." rows="1"></textarea>
         
         <button id="sendBtn">
@@ -232,19 +233,14 @@
         const SILENCE_TIMEOUT = 2500; 
         const NO_SPEECH_TIMEOUT = 5000; 
 
-        // --- АВТО-РАСТЯГИВАНИЕ TEXTAREA ---
-        textInput.setAttribute('style', 'height:' + (textInput.scrollHeight) + 'px;overflow-y:hidden;');
-        textInput.addEventListener("input", OnInput, false);
-        
+        // --- ИСПРАВЛЕННОЕ АВТО-РАСТЯГИВАНИЕ TEXTAREA ---
         function OnInput() {
-            this.style.height = 'auto';
-            this.style.height = (this.scrollHeight) + "px";
-            if (this.scrollHeight > 120) {
-                this.style.overflowY = "auto";
-            } else {
-                this.style.overflowY = "hidden";
-            }
+            this.style.height = '50px'; // Сбрасываем к минимальной высоте
+            const newHeight = Math.min(this.scrollHeight, 120);
+            this.style.height = newHeight + 'px';
+            this.style.overflowY = this.scrollHeight > 120 ? "auto" : "hidden";
         }
+        textInput.addEventListener("input", OnInput, false);
         // -----------------------------------
 
         if (SpeechRecognition) {
@@ -329,7 +325,7 @@
             } else {
                 finalTranscript = '';
                 textInput.value = '';
-                textInput.style.height = 'auto'; // Сбрасываем высоту
+                textInput.style.height = '50px'; // Сбрасываем высоту
                 recognition.start();
             }
         });
@@ -342,7 +338,7 @@
             sendMessage(text);
             finalTranscript = '';
             textInput.value = '';
-            textInput.style.height = 'auto'; // Сбрасываем высоту
+            textInput.style.height = '50px'; // Сбрасываем высоту
         }
 
         function handleManualSend() {
@@ -356,7 +352,7 @@
                 clearTimeout(noSpeechTimer);
                 sendMessage(text);
                 textInput.value = '';
-                textInput.style.height = 'auto'; // Сбрасываем высоту
+                textInput.style.height = '50px'; // Сбрасываем высоту
                 finalTranscript = '';
             }
         }

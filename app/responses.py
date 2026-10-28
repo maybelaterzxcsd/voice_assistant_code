@@ -31,7 +31,7 @@ def _human_time(time_str: str) -> str:
         elif m == 30:
             return f"{h} тридцать"
         else:
-            return f"{h} {m}"
+            return f"{h} {m:02d}"
     except:
         return time_str
 
@@ -43,18 +43,21 @@ def get_response(template_key: str, **kwargs) -> str:
     kwargs["new_human_time"] = _human_time(kwargs.get("new_time")) if kwargs.get("new_time") else ""
     
     templates = RESPONSES.get(template_key, RESPONSES["unknown"])
-    return random.choice(templates).format(**kwargs)
+    response = random.choice(templates).format(**kwargs)
+    
+    # Убираем двойные пробелы (если human_time пустой, не будет лишнего пробела)
+    return " ".join(response.split())
 
 
 RESPONSES = {
-    "created": ["Записал! {title} - {human_date} {human_time}.", "Готово, добавил: {title} на {human_date} {human_time}."],
-    "created_task": ["Задача '{title}' на {human_date} - записано!", "Добавил задачу: {title} на {human_date}."],
-    "created_meeting": ["Встреча '{title}' запланирована на {human_date} {human_time}.", "Записал встречу: {title} - {human_date} {human_time}."],
-    "created_reminder": ["Напомню: {title} - {human_date} {human_time}.", "Ок, напомню о '{title}' {human_date} {human_time}."],
-    "empty": ["На {period} пока пусто. Может, что-то запланируем?", "На {period} ничего нет - свободное время!"],
+    "created": ["Записал! {title} — {human_date} {human_time}.", "Готово, добавил: {title} на {human_date} {human_time}."],
+    "created_task": ["Задача '{title}' на {human_date} {human_time} — записано!", "Добавил задачу: {title} на {human_date} {human_time}."],
+    "created_meeting": ["Встреча '{title}' запланирована на {human_date} {human_time}.", "Записал встречу: {title} — {human_date} {human_time}."],
+    "created_reminder": ["Напомню: {title} — {human_date} {human_time}.", "Ок, напомню о '{title}' {human_date} {human_time}."],
+    "empty": ["На {period} пока пусто. Может, что-то запланируем?", "На {period} ничего нет — свободное время!"],
     "moved": ["Перенёс: {title} теперь {new_human_date} {new_human_time}.", "Готово! {title} перенесён на {new_human_date} {new_human_time}."],
     "not_found": ["Не нашёл '{title}'. Вот что есть:\n{events_list}\nУточни?", "Такого события нет. Может, одно из этих:\n{events_list}?"],
-    "no_events": ["У тебя вообще нет событий для переноса.", "Пока нечего переносить - расписание пустое."],
+    "no_events": ["У тебя вообще нет событий для переноса.", "Пока нечего переносить — расписание пустое."],
     "unknown": ["Не совсем понял. Можешь сказать иначе?", "Не расслышал. Попробуй, например: 'Напомни завтра купить молоко'."],
     "clarification_ask": ["{question}", "Уточни, пожалуйста: {question}"],
     "search_found": ["Нашёл {count} событий:\n{events_list}", "Вот что нашёл ({count}):\n{events_list}"],

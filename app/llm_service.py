@@ -31,10 +31,11 @@ CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 _access_token: Optional[str] = None
 _token_expires_at: float = 0
 
+# ДОБАВЛЕНЫ: назначь, назначить, давай
 ACTION_VERBS = [
     "напомни", "напомнить", "поставь", "поставить", "добавь", "добавить",
     "создай", "создать", "запиши", "записать", "запланируй", "запланировать",
-    "хочу", "нужно", "надо", "сделай", "сделать"
+    "хочу", "нужно", "надо", "сделай", "сделать", "назначь", "назначить", "давай"
 ]
 
 RESCHEDULE_VERBS = [
@@ -48,6 +49,21 @@ COMPLETE_VERBS = [
     "выполнено", "выполнил", "сделал", "сделано", "готово", "отметь",
     "попил", "помыл", "купил", "прочитал", "закончил", "завершил"
 ]
+
+
+def _clean_title(title: str, original_text: str) -> str:
+    """Безопасно очищает title от командных глаголов в начале."""
+    if not title: return original_text.capitalize()
+    lower_title = title.lower().strip()
+    
+    # Отрезаем только командные глаголы в начале
+    verbs = ["добавь", "поставь", "создай", "напомни", "запиши", "запланируй", "сделай", "назначь", "давай"]
+    for v in verbs:
+        if lower_title.startswith(v + " "):
+            lower_title = lower_title[len(v):].strip()
+            
+    # Если после отрезания ничего не осталось, возвращаем оригинал
+    return lower_title.capitalize() if lower_title else original_text.capitalize()
 
 
 def _get_access_token() -> str:
@@ -80,7 +96,6 @@ TIME_SYNONYMS = {
     "в обед": "13:00", "обед": "13:00", "полдень": "12:00", "полночь": "00:00",
 }
 
-# Переставили послезавтра вперед для двойной защиты
 DATE_PATTERNS = {"послезавтра": 2, "сегодня": 0, "завтра": 1}
 
 MONTHS_RU = {
@@ -126,7 +141,6 @@ def parse_date_expression(date_str: str) -> Optional[str]:
     if not date_str: return None
     date_str = date_str.strip().lower()
     
-    # Взрослая проверка: \b гарантирует, что мы ищем слово целиком, а не часть
     for word, offset in DATE_PATTERNS.items():
         if re.search(rf'\b{re.escape(word)}\b', date_str):
             return (datetime.now().date() + timedelta(days=offset)).strftime("%Y-%m-%d")
@@ -240,27 +254,21 @@ class LLMAssistant:
             if intent in ("create", "search", "upcoming", "reschedule", "clarification", "delete", "complete"):
                 text_lower = user_text.lower()
                 
-                # 1. УДАЛЕНИЕ
                 if any(w in text_lower for w in ["удали", "убери", "сотри", "удалить"]):
                     return "delete"
                 
-                # 2. ВЫПОЛНЕНИЕ
                 if any(w in text_lower for w in COMPLETE_VERBS):
                     return "complete"
                 
-                # 3. ПЕРЕНОС
                 if any(w in text_lower for w in RESCHEDULE_VERBS) or re.search(r"перенес[ттьи]|перевед[иь]|сдвин[ьь]|перестав[ьь]|поменя[йй]", text_lower):
                     return "reschedule"
                 
-                # 4. ПОИСК
                 if any(marker in text_lower for marker in ["найди", "покажи", "когда", "что было", "какие задачи", "какие встречи"]):
                     return "search"
                 
-                # 5. СОЗДАНИЕ (глаголы действия ВАЖНЕЕ слов времени!)
                 if any(w in text_lower for w in ACTION_VERBS):
                     return "create"
                 
-                # 6. ВРЕМЯ (только если нет глаголов действия выше)
                 if any(w in text_lower for w in ["вчера", "сегодня", "завтра", "послезавтра", "на прошлой неделе", "на этой неделе", "на неделе"]):
                     return "upcoming"
                 
@@ -271,30 +279,24 @@ class LLMAssistant:
     def _heuristic_intent(self, user_text: str) -> str:
         text = user_text.lower()
         
-        # 1. Удаление
         if any(w in text for w in ["удали", "убери", "сотри", "удалить"]):
             return "delete"
         
-        # 2. Выполнение
         if any(w in text for w in COMPLETE_VERBS):
             return "complete"
         
-        # 3. Перенос
         if any(w in text for w in RESCHEDULE_VERBS) or re.search(r"перенес[ттьи]|перевед[иь]|сдвин[ьь]|перестав[ьь]|поменя[йй]", text):
             return "reschedule"
         
-        # 4. Поиск
         if any(w in text for w in ["найди", "покажи", "когда", "что было", "какие задачи", "какие встречи"]) or "что с " in text or "как дела с " in text:
             return "search"
         
-        # 5. СОЗДАНИЕ (глаголы действия — ВАЖНЕЕ времени!)
         if any(w in text for w in ACTION_VERBS):
             return "create"
             
         if "у меня" in text and ("встреча" in text or "созвон" in text) and re.search(r"\d{1,2}[:.]\d{2}", text):
             return "create"
         
-        # 6. Время (только если нет глаголов выше)
         if any(w in text for w in ["что у меня", "какие планы", "есть ли у меня", "че завтра", "что на неделе", "ближайшее время", "ближайшие события", "ближайш", "вчера", "сегодня", "завтра", "послезавтра"]):
             return "upcoming"
             
@@ -305,7 +307,7 @@ class LLMAssistant:
 
 ПОЛЯ:
 - event_type: "task" (задача), "meeting" (встреча/созвон), "reminder" (напоминание)
-- title: 3-6 слов, сохрани смысл
+- title: 3-6 слов, сохрани смысл (ТОЛЬКО СУТЬ, БЕЗ ГЛАГОЛОВ ВРОДЕ "ДОБАВЬ" или "ПОСТАВЬ")
 - date_text: КАК ПОЛЬЗОВАТЕЛЬ СКАЗАЛ ДАТУ (например: "завтра", "в пятницу", "26 октября", "до конца недели"). Если даты нет - null.
 - time_text: КАК ПОЛЬЗОВАТЕЛЬ СКАЗАЛ ВРЕМЯ (например: "в 10 утра", "в 15:00"). Если времени нет - null.
 - recurrence_text: ЕСЛИ пользователь сказал про повторение (например: "каждый день", "каждую пятницу", "еженедельно"). Иначе - null.
@@ -385,20 +387,16 @@ class LLMAssistant:
         elif "каждый месяц" in rec_text or "ежемесячно" in rec_text: 
             recurrence = "monthly"
         
-        # Если есть повторение и нет даты — начинаем с сегодня
         if recurrence and not date:
             date = datetime.now().date().strftime("%Y-%m-%d")
         
-        # --- ЛОГИКА УТОЧНЕНИЙ ---
         needs_clarification = data.get("needs_clarification", False)
         clarification_question = data.get("clarification_question", "")
         missing_fields = data.get("missing_fields", [])
         
-        # Если это напоминание и нет времени — ставим 09:00 по умолчанию
         if event_type == "reminder" and not time:
             time = "09:00"
         
-        # Спрашиваем время ТОЛЬКО для встреч (meeting)
         if event_type == "meeting":
             if not date or not time:
                 needs_clarification = True
@@ -409,8 +407,6 @@ class LLMAssistant:
                     if not date and not time: clarification_question = "На какую дату и время?"
                     elif not date: clarification_question = "На какую дату?"
                     else: clarification_question = "На какое время?"
-        
-        # Для задач и напоминаний требуем только дату
         elif event_type in ("task", "reminder"):
             if not date:
                 needs_clarification = True
@@ -418,9 +414,12 @@ class LLMAssistant:
                 if not clarification_question:
                     clarification_question = "На какую дату поставить задачу?"
         
+        raw_title = data.get("title") or original_text
+        cleaned_title = _clean_title(raw_title, original_text)
+        
         return {
             "event_type": event_type,
-            "title": data.get("title", original_text),
+            "title": cleaned_title,
             "date": date,
             "time": time,
             "recurrence": recurrence,
@@ -445,7 +444,7 @@ class LLMAssistant:
             time = "09:00"
                 
         return {
-            "event_type": event_type, "title": user_text, "date": date, "time": time, "recurrence": None,
+            "event_type": event_type, "title": _clean_title(user_text, user_text), "date": date, "time": time, "recurrence": None,
             "needs_clarification": not date, "clarification_question": "На какую дату?", "missing_fields": ["date"] if not date else []
         }
 
