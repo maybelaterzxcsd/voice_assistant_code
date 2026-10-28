@@ -94,25 +94,32 @@
             margin-top: 1.5rem; 
             background: rgba(255, 255, 255, 0.7);
             padding: 0.5rem;
-            border-radius: 50px;
+            border-radius: 24px; /* Чуть увеличили радиус для textarea */
             box-shadow: 0 4px 15px rgba(0,0,0,0.05);
             backdrop-filter: blur(10px);
+            align-items: flex-end; /* Выравниваем по нижнему краю, когда textarea растет */
         }
 
-        input { 
+        /* Стили для textarea */
+        textarea { 
             flex: 1; 
             padding: 0.75rem 1rem; 
             border: 1px solid transparent; 
-            border-radius: 40px; 
+            border-radius: 20px; 
             font-size: 1rem; 
             outline: none; 
             background: transparent;
             transition: all 0.2s; 
             font-family: 'Inter', sans-serif;
             color: #2d3748;
+            resize: none; /* Запрещаем вручную менять размер */
+            max-height: 120px; /* Максимальная высота */
+            overflow-y: hidden; /* Скрываем скролл, пока не достигнут максимум */
+            line-height: 1.5;
+            margin-bottom: 2px; /* Небольшой отступ, чтобы не прилипало */
         }
 
-        input:focus { background: white; }
+        textarea:focus { background: white; }
 
         button { 
             padding: 0.75rem 1.5rem; 
@@ -128,12 +135,12 @@
             align-items: center;
             justify-content: center;
             gap: 8px;
+            height: 50px; /* Фиксируем высоту кнопок */
         }
 
         button:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
         button:active { transform: translateY(0); }
         
-        /* Стили для иконок внутри кнопок */
         button svg { display: block; }
 
         #micBtn { 
@@ -193,7 +200,8 @@
             <span id="micText">Говорить</span>
         </button>
         
-        <input type="text" id="textInput" placeholder="Или введите текст здесь...">
+        <!-- ИЗМЕНЕНО: input заменен на textarea -->
+        <textarea id="textInput" placeholder="Или введите текст здесь..." rows="1"></textarea>
         
         <button id="sendBtn">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -223,6 +231,21 @@
         
         const SILENCE_TIMEOUT = 2500; 
         const NO_SPEECH_TIMEOUT = 5000; 
+
+        // --- АВТО-РАСТЯГИВАНИЕ TEXTAREA ---
+        textInput.setAttribute('style', 'height:' + (textInput.scrollHeight) + 'px;overflow-y:hidden;');
+        textInput.addEventListener("input", OnInput, false);
+        
+        function OnInput() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + "px";
+            if (this.scrollHeight > 120) {
+                this.style.overflowY = "auto";
+            } else {
+                this.style.overflowY = "hidden";
+            }
+        }
+        // -----------------------------------
 
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
@@ -268,6 +291,7 @@
                     }
                 }
                 textInput.value = finalTranscript + interimTranscript;
+                OnInput.call(textInput); // Вызываем ресайз при вводе голосом
             };
 
             recognition.onend = () => {
@@ -305,6 +329,7 @@
             } else {
                 finalTranscript = '';
                 textInput.value = '';
+                textInput.style.height = 'auto'; // Сбрасываем высоту
                 recognition.start();
             }
         });
@@ -317,6 +342,7 @@
             sendMessage(text);
             finalTranscript = '';
             textInput.value = '';
+            textInput.style.height = 'auto'; // Сбрасываем высоту
         }
 
         function handleManualSend() {
@@ -330,13 +356,19 @@
                 clearTimeout(noSpeechTimer);
                 sendMessage(text);
                 textInput.value = '';
+                textInput.style.height = 'auto'; // Сбрасываем высоту
                 finalTranscript = '';
             }
         }
 
         sendBtn.addEventListener('click', handleManualSend);
-        textInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') handleManualSend();
+        
+        // Обработка нажатия Enter (Shift+Enter переносит строку)
+        textInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault(); // Предотвращаем перенос строки
+                handleManualSend();
+            }
         });
 
         function addMessage(text, sender) {

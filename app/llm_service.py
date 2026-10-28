@@ -44,6 +44,11 @@ RESCHEDULE_VERBS = [
     "передвинь", "передвинуть", "поменяй", "поменять", "перенос"
 ]
 
+COMPLETE_VERBS = [
+    "выполнено", "выполнил", "сделал", "сделано", "готово", "отметь",
+    "попил", "помыл", "купил", "прочитал", "закончил", "завершил"
+]
+
 
 def _get_access_token() -> str:
     global _access_token, _token_expires_at
@@ -74,7 +79,10 @@ TIME_SYNONYMS = {
     "вечером": "18:00", "вечера": "18:00", "ночью": "22:00", "ночи": "22:00",
     "в обед": "13:00", "обед": "13:00", "полдень": "12:00", "полночь": "00:00",
 }
-DATE_PATTERNS = {"сегодня": 0, "завтра": 1, "послезавтра": 2}
+
+# Переставили послезавтра вперед для двойной защиты
+DATE_PATTERNS = {"послезавтра": 2, "сегодня": 0, "завтра": 1}
+
 MONTHS_RU = {
     "января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
     "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12,
@@ -118,8 +126,9 @@ def parse_date_expression(date_str: str) -> Optional[str]:
     if not date_str: return None
     date_str = date_str.strip().lower()
     
+    # Взрослая проверка: \b гарантирует, что мы ищем слово целиком, а не часть
     for word, offset in DATE_PATTERNS.items():
-        if word in date_str:
+        if re.search(rf'\b{re.escape(word)}\b', date_str):
             return (datetime.now().date() + timedelta(days=offset)).strftime("%Y-%m-%d")
     
     match = re.match(r"через\s+(\d+)\s+(день|дня|дней)", date_str)
@@ -146,7 +155,7 @@ def parse_date_expression(date_str: str) -> Optional[str]:
     weekdays = {"понедельник": 0, "вторник": 1, "среда": 2, "среду": 2, "четверг": 3, "четвергу": 3,
                 "пятница": 4, "пятницу": 4, "суббота": 5, "субботу": 5, "воскресенье": 6, "воскресению": 6}
     for day_name, day_num in weekdays.items():
-        if day_name in date_str:
+        if re.search(rf'\b{re.escape(day_name)}\b', date_str):
             today = datetime.now().date()
             days_ahead = day_num - today.weekday()
             if days_ahead <= 0: days_ahead += 7
@@ -214,12 +223,12 @@ class LLMAssistant:
         system_prompt = """Ты - классификатор намерений. Твоя задача - понять, что хочет пользователь.
 
 ВАРИАНТЫ:
-1. "create" - Пользователь ДИКТУЕТ событие. Примеры: "встреча с дизайнером в четверг в 11", "завтра в 10 позвонить маме", "добавь задачу купить хлеб".
-2. "upcoming" - Пользователь СПРАШИВАЕТ, что у него есть (или было) за период. Примеры: "что у меня сегодня?", "какие планы на завтра?", "что было на прошлой неделе?", "что на неделе?"
-3. "search" - Пользователь просит НАЙТИ конкретную старую запись (без привязки к времени). Примеры: "найди задачу про презентацию", "когда была встреча с Иваном?"
+1. "create" - Пользователь ДИКТУЕТ событие (действие). Примеры: "напомни завтра позвонить маме", "встреча с дизайнером в четверг в 11", "добавь задачу купить хлеб".
+2. "upcoming" - Пользователь СПРАШИВАЕТ, что у него есть (без глаголов действия). Примеры: "что у меня сегодня?", "какие планы на завтра?", "что было на прошлой неделе?"
+3. "search" - Пользователь просит НАЙТИ. Примеры: "найди задачу про презентацию", "когда была встреча с Иваном?"
 4. "reschedule" - Пользователь просит ПЕРЕНЕСТИ. Примеры: "перенеси встречу на завтра", "сдвинь задачу на час"
 5. "delete" - Пользователь просит УДАЛИТЬ. Примеры: "удали задачу про маму", "убери встречу с Иваном"
-6. "complete" - Пользователь просит ОТМЕТИТЬ ВЫПОЛНЕННОЙ. Примеры: "отметь задачу как выполненную", "я сделал это", "задача выполнена"
+6. "complete" - Пользователь просит ОТМЕТИТЬ ВЫПОЛНЕННОЙ. Примеры: "я попил воды", "отметь задачу как выполненную", "я сделал это"
 7. "clarification" - Короткий ответ на уточняющий вопрос. Примеры: "в 14:00", "завтра", "да", "нет".
 
 ВЕРНИ ТОЛЬКО ОДНО СЛОВО ИЗ СПИСКА ВЫШЕ."""
@@ -231,24 +240,29 @@ class LLMAssistant:
             if intent in ("create", "search", "upcoming", "reschedule", "clarification", "delete", "complete"):
                 text_lower = user_text.lower()
                 
-                # ЖЕСТКИЙ ПРИОРИТЕТ ВРЕМЕННЫХ ЗАПРОСОВ
-                if any(w in text_lower for w in ["вчера", "сегодня", "завтра", "послезавтра", "на прошлой неделе", "на этой неделе", "на неделе"]):
-                    return "upcoming"
-
+                # 1. УДАЛЕНИЕ
                 if any(w in text_lower for w in ["удали", "убери", "сотри", "удалить"]):
                     return "delete"
                 
-                if any(w in text_lower for w in ["выполнено", "выполнил", "сделал", "сделано", "готово", "отметь"]):
+                # 2. ВЫПОЛНЕНИЕ
+                if any(w in text_lower for w in COMPLETE_VERBS):
                     return "complete"
                 
-                if any(marker in text_lower for marker in ["найди", "покажи", "когда", "что было", "какие задачи", "какие встречи"]):
-                    return "search"
-                
+                # 3. ПЕРЕНОС
                 if any(w in text_lower for w in RESCHEDULE_VERBS) or re.search(r"перенес[ттьи]|перевед[иь]|сдвин[ьь]|перестав[ьь]|поменя[йй]", text_lower):
                     return "reschedule"
                 
+                # 4. ПОИСК
+                if any(marker in text_lower for marker in ["найди", "покажи", "когда", "что было", "какие задачи", "какие встречи"]):
+                    return "search"
+                
+                # 5. СОЗДАНИЕ (глаголы действия ВАЖНЕЕ слов времени!)
                 if any(w in text_lower for w in ACTION_VERBS):
                     return "create"
+                
+                # 6. ВРЕМЯ (только если нет глаголов действия выше)
+                if any(w in text_lower for w in ["вчера", "сегодня", "завтра", "послезавтра", "на прошлой неделе", "на этой неделе", "на неделе"]):
+                    return "upcoming"
                 
                 return intent
         
@@ -257,29 +271,32 @@ class LLMAssistant:
     def _heuristic_intent(self, user_text: str) -> str:
         text = user_text.lower()
         
-        # 1. СНАЧАЛА ВРЕМЕННЫЕ ЗАПРОСЫ (чтобы "что было на прошлой неделе" не уходило в поиск)
-        time_markers = ["вчера", "сегодня", "завтра", "послезавтра", "на прошлой неделе", "на этой неделе", "на неделе", "ближайш"]
-        if any(w in text for w in time_markers) or "что у меня" in text or "какие планы" in text:
-            return "upcoming"
-
-        # 2. ПОТОМ ПОИСК
+        # 1. Удаление
         if any(w in text for w in ["удали", "убери", "сотри", "удалить"]):
             return "delete"
         
-        if any(w in text for w in ["выполнено", "выполнил", "сделал", "сделано", "готово", "отметь"]):
+        # 2. Выполнение
+        if any(w in text for w in COMPLETE_VERBS):
             return "complete"
         
+        # 3. Перенос
+        if any(w in text for w in RESCHEDULE_VERBS) or re.search(r"перенес[ттьи]|перевед[иь]|сдвин[ьь]|перестав[ьь]|поменя[йй]", text):
+            return "reschedule"
+        
+        # 4. Поиск
         if any(w in text for w in ["найди", "покажи", "когда", "что было", "какие задачи", "какие встречи"]) or "что с " in text or "как дела с " in text:
             return "search"
         
-        if any(w in text for w in RESCHEDULE_VERBS) or re.search(r"перенес[ттьи]|перевед[иь]|сдвин[ьь]|перестав[ьь]|поменя[йй]", text):
-            return "reschedule"
+        # 5. СОЗДАНИЕ (глаголы действия — ВАЖНЕЕ времени!)
+        if any(w in text for w in ACTION_VERBS):
+            return "create"
             
         if "у меня" in text and ("встреча" in text or "созвон" in text) and re.search(r"\d{1,2}[:.]\d{2}", text):
             return "create"
-            
-        if any(w in text for w in ACTION_VERBS):
-            return "create"
+        
+        # 6. Время (только если нет глаголов выше)
+        if any(w in text for w in ["что у меня", "какие планы", "есть ли у меня", "че завтра", "что на неделе", "ближайшее время", "ближайшие события", "ближайш", "вчера", "сегодня", "завтра", "послезавтра"]):
+            return "upcoming"
             
         return "unknown"
 
@@ -420,11 +437,10 @@ class LLMAssistant:
         
         date = None
         for word, offset in DATE_PATTERNS.items():
-            if word in text:
+            if re.search(rf'\b{re.escape(word)}\b', text):
                 date = (datetime.now().date() + timedelta(days=offset)).strftime("%Y-%m-%d")
                 break
         
-        # Если это напоминание и нет времени — ставим 09:00
         if event_type == "reminder" and not time:
             time = "09:00"
                 
