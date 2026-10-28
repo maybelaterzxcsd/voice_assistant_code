@@ -215,8 +215,8 @@ class LLMAssistant:
 
 ВАРИАНТЫ:
 1. "create" - Пользователь ДИКТУЕТ событие. Примеры: "встреча с дизайнером в четверг в 11", "завтра в 10 позвонить маме", "добавь задачу купить хлеб".
-2. "upcoming" - Пользователь СПРАШИВАЕТ, что у него есть. Примеры: "что у меня сегодня?", "какие планы на завтра?", "что на неделе?"
-3. "search" - Пользователь просит НАЙТИ. Примеры: "найди задачу про презентацию", "когда была встреча с Иваном?"
+2. "upcoming" - Пользователь СПРАШИВАЕТ, что у него есть (или было) за период. Примеры: "что у меня сегодня?", "какие планы на завтра?", "что было на прошлой неделе?", "что на неделе?"
+3. "search" - Пользователь просит НАЙТИ конкретную старую запись (без привязки к времени). Примеры: "найди задачу про презентацию", "когда была встреча с Иваном?"
 4. "reschedule" - Пользователь просит ПЕРЕНЕСТИ. Примеры: "перенеси встречу на завтра", "сдвинь задачу на час"
 5. "delete" - Пользователь просит УДАЛИТЬ. Примеры: "удали задачу про маму", "убери встречу с Иваном"
 6. "complete" - Пользователь просит ОТМЕТИТЬ ВЫПОЛНЕННОЙ. Примеры: "отметь задачу как выполненную", "я сделал это", "задача выполнена"
@@ -231,6 +231,10 @@ class LLMAssistant:
             if intent in ("create", "search", "upcoming", "reschedule", "clarification", "delete", "complete"):
                 text_lower = user_text.lower()
                 
+                # ЖЕСТКИЙ ПРИОРИТЕТ ВРЕМЕННЫХ ЗАПРОСОВ
+                if any(w in text_lower for w in ["вчера", "сегодня", "завтра", "послезавтра", "на прошлой неделе", "на этой неделе", "на неделе"]):
+                    return "upcoming"
+
                 if any(w in text_lower for w in ["удали", "убери", "сотри", "удалить"]):
                     return "delete"
                 
@@ -253,6 +257,12 @@ class LLMAssistant:
     def _heuristic_intent(self, user_text: str) -> str:
         text = user_text.lower()
         
+        # 1. СНАЧАЛА ВРЕМЕННЫЕ ЗАПРОСЫ (чтобы "что было на прошлой неделе" не уходило в поиск)
+        time_markers = ["вчера", "сегодня", "завтра", "послезавтра", "на прошлой неделе", "на этой неделе", "на неделе", "ближайш"]
+        if any(w in text for w in time_markers) or "что у меня" in text or "какие планы" in text:
+            return "upcoming"
+
+        # 2. ПОТОМ ПОИСК
         if any(w in text for w in ["удали", "убери", "сотри", "удалить"]):
             return "delete"
         
@@ -270,9 +280,6 @@ class LLMAssistant:
             
         if any(w in text for w in ACTION_VERBS):
             return "create"
-            
-        if any(w in text for w in ["что у меня", "какие планы", "есть ли у меня", "че завтра", "что на неделе", "ближайшее время", "ближайшие события", "ближайш"]):
-            return "upcoming"
             
         return "unknown"
 
@@ -351,20 +358,31 @@ class LLMAssistant:
         date = parse_date_expression(date_text) if date_text else None
         time = parse_time_expression(time_text) if time_text else None
         
+        # --- ОБРАБОТКА ПОВТОРЕНИЙ ---
         rec_text = data.get("recurrence_text", "").lower() if data.get("recurrence_text") else ""
         recurrence = None
-        if "каждый день" in rec_text or "ежедневно" in rec_text: recurrence = "daily"
-        elif any(w in rec_text for w in ["каждую неделю", "еженедельно", "каждый понедельник", "каждую пятницу"]): recurrence = "weekly"
-        elif "каждый месяц" in rec_text or "ежемесячно" in rec_text: recurrence = "monthly"
+        if any(w in rec_text for w in ["каждый день", "ежедневно", "кажется день"]): 
+            recurrence = "daily"
+        elif any(w in rec_text for w in ["каждую неделю", "еженедельно", "каждый понедельник", "каждую пятницу"]): 
+            recurrence = "weekly"
+        elif "каждый месяц" in rec_text or "ежемесячно" in rec_text: 
+            recurrence = "monthly"
         
+        # Если есть повторение и нет даты — начинаем с сегодня
         if recurrence and not date:
             date = datetime.now().date().strftime("%Y-%m-%d")
         
+        # --- ЛОГИКА УТОЧНЕНИЙ ---
         needs_clarification = data.get("needs_clarification", False)
         clarification_question = data.get("clarification_question", "")
         missing_fields = data.get("missing_fields", [])
         
-        if event_type in ("meeting", "reminder"):
+        # Если это напоминание и нет времени — ставим 09:00 по умолчанию
+        if event_type == "reminder" and not time:
+            time = "09:00"
+        
+        # Спрашиваем время ТОЛЬКО для встреч (meeting)
+        if event_type == "meeting":
             if not date or not time:
                 needs_clarification = True
                 missing_fields = []
@@ -374,7 +392,9 @@ class LLMAssistant:
                     if not date and not time: clarification_question = "На какую дату и время?"
                     elif not date: clarification_question = "На какую дату?"
                     else: clarification_question = "На какое время?"
-        elif event_type == "task":
+        
+        # Для задач и напоминаний требуем только дату
+        elif event_type in ("task", "reminder"):
             if not date:
                 needs_clarification = True
                 missing_fields = ["date"]
@@ -403,6 +423,10 @@ class LLMAssistant:
             if word in text:
                 date = (datetime.now().date() + timedelta(days=offset)).strftime("%Y-%m-%d")
                 break
+        
+        # Если это напоминание и нет времени — ставим 09:00
+        if event_type == "reminder" and not time:
+            time = "09:00"
                 
         return {
             "event_type": event_type, "title": user_text, "date": date, "time": time, "recurrence": None,
