@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from app.database import engine, Base, get_db
 from app.models import Event
 from app.schemas import ChatRequest, ChatResponse, EventResponse, EventCreate
-# ВАЖНО: Импортируем глаголы для работы "Контекстного щита"
 from app.llm_service import (
     determine_intent,
     extract_event_info,
@@ -77,15 +76,11 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)):
     history = session.get_history()
     intent = determine_intent(user_text, history)
     
-    # --- КОНТЕКСТНЫЙ ЩИТ ---
-    # Если мы ждем уточнения, и пользователь не ввел новую явную команду,
-    # принудительно ставим clarification, чтобы не потерять задачу.
     if session.pending_event:
         text_lower = user_text.lower()
         explicit_commands = ACTION_VERBS + RESCHEDULE_VERBS + ["найди", "покажи", "удали", "убери", "отметь", "выполнено", "нет", "отмена"]
         if not any(w in text_lower for w in explicit_commands):
             intent = "clarification"
-    # ------------------------
     
     print(f"\n=== CHAT ===")
     print(f"session_id: {session.session_id}")
@@ -93,7 +88,6 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)):
     print(f"pending_event: {session.pending_event}")
     print(f"user_text: {user_text}")
     
-    # Сбрасываем pending_event только если пользователь явно начал что-то другое
     if intent in ("search", "create", "upcoming", "delete", "complete") and session.pending_event:
         print("СБРОС ЗАВИСШЕГО PENDING_EVENT")
         session.pending_event = None
@@ -168,7 +162,6 @@ def handle_clarification(user_text: str, session, db: Session) -> ChatResponse:
         merged_title = new_data.get("title") or pending.title
         merged_type = new_data.get("event_type") or pending.event_type
         
-        # Ловим фразу "без времени"
         user_text_lower = user_text.lower().strip()
         explicit_no_time = any(phrase in user_text_lower for phrase in ["без времени", "нет времени", "неважно", "не важно"])
         
@@ -177,7 +170,6 @@ def handle_clarification(user_text: str, session, db: Session) -> ChatResponse:
         
         missing_fields = []
         if not merged_date: missing_fields.append("date")
-        # Время требуем только для встреч
         if not merged_time and merged_type == "meeting": missing_fields.append("time")
         
         if missing_fields:
@@ -242,7 +234,6 @@ def handle_create(user_text: str, session, db: Session) -> ChatResponse:
     if "error" in event_data:
         return ChatResponse(response=f"Ошибка: {event_data['error']}", intent="create", session_id=session.session_id)
     
-    # Защита от зацикливания
     needs_clar = event_data.get("needs_clarification", False)
     missing_f = event_data.get("missing_fields", [])
     e_type = event_data.get("event_type", "task")

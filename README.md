@@ -9,12 +9,21 @@
 
 - Backend: Python 3.10+, FastAPI, Uvicorn
 - База данных: SQLite (SQLAlchemy ORM)
+- DevOps: Docker, Docker Compose
 - AI / LLM: GigaChat API (Sber)
 - Обработка текста: `thefuzz` (нечеткий поиск по смыслу), `dateparser`
 - Frontend: HTML5, CSS3, Vanilla JavaScript
 - Голос: Web Speech API (встроенное в браузер распознавание речи (STT) и синтез (TTS))
 
+Держи **готовый блок**, в который я добавил инструкцию по запуску через **Docker** (потому что организаторы именно этого и ждут). 
+
+Просто скопируй этот текст и вставь его **вместо** твоего старого блока «Быстрый старт».
+
 ## Быстрый старт
+
+### Вариант 1: Запуск через Docker (Рекомендуемый)
+
+Если у вас установлен Docker, вы можете запустить проект одной командой без настройки окружения.
 
 1. Клонируйте репозиторий и перейдите в папку проекта:
    ```bash
@@ -22,9 +31,36 @@
    cd voice_assistant_code
    ```
 
+2. Создайте файл `.env` в корне проекта и добавьте ваш ключ авторизации GigaChat:
+   ```env
+   GIGACHAT_AUTH_KEY=ваш_ключ_авторизации
+   ```
+
+3. Запустите сборку и запуск контейнера:
+   ```bash
+   docker-compose up --build
+   ```
+
+4. Откройте в браузере веб-интерфейс: **[http://localhost:8000/ui](http://localhost:8000/ui)**
+
+5. Чтобы остановить контейнер, нажмите `Ctrl+C` в терминале или выполните:
+   ```bash
+   docker-compose down
+   ```
+
+---
+
+### Вариант 2: Локальный запуск (Через Python)
+
+Если вы хотите запустить проект без Docker, используйте стандартное виртуальное окружение Python.
+
+1. Клонируйте репозиторий и перейдите в папку проекта:
+   ```bash
+   git clone https://github.com/maybelaterzxcsd/voice_assistant_code
+   cd voice_assistant_code
+   ```
 
 2. Создайте и активируйте виртуальное окружение:
-
    ```bash
    python -m venv venv
    # Для Windows:
@@ -34,30 +70,28 @@
    ```
 
 3. Установите зависимости:
-
    ```bash
    pip install -r requirements.txt
    ```
 
 4. Создайте файл `.env` в корне проекта и добавьте ваш ключ авторизации GigaChat:
-
    ```env
    GIGACHAT_AUTH_KEY=ваш_ключ_авторизации
    ```
 
-5. Запустите сервер разработки:
+5. *(Опционально)* Наполните базу тестовыми данными:
+   ```bash
+   python -m app.import_csv
+   ```
 
+6. Запустите сервер разработки:
    ```bash
    uvicorn app.main:app --reload
    ```
 
-6. Откройте в браузере веб-интерфейс: **[http://127.0.0.1:8000/ui](http://127.0.0.1:8000/ui)**
+7. Откройте в браузере веб-интерфейс: **[http://127.0.0.1:8000/ui](http://127.0.0.1:8000/ui)**
 
-_(Опционально)_ Чтобы наполнить базу тестовыми данными, выполните:
 
-```bash
-python -m app.import_csv
-```
 
 ## Архитектурные решения
 
@@ -73,8 +107,11 @@ voice_assistant/
 │   ├── schemas.py
 │   ├── search_service.py
 │   └── session_manager.py
+├── .dockerignore
 ├── .env.example
 ├── .gitignore
+├── Dockerfile
+├── docker-compose.yml
 ├── events.csv
 ├── index.html
 ├── LICENSE

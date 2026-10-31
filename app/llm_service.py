@@ -31,7 +31,6 @@ CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 _access_token: Optional[str] = None
 _token_expires_at: float = 0
 
-# ДОБАВЛЕНЫ: назначь, назначить, давай
 ACTION_VERBS = [
     "напомни", "напомнить", "поставь", "поставить", "добавь", "добавить",
     "создай", "создать", "запиши", "записать", "запланируй", "запланировать",
@@ -56,13 +55,11 @@ def _clean_title(title: str, original_text: str) -> str:
     if not title: return original_text.capitalize()
     lower_title = title.lower().strip()
     
-    # Отрезаем только командные глаголы в начале
     verbs = ["добавь", "поставь", "создай", "напомни", "запиши", "запланируй", "сделай", "назначь", "давай"]
     for v in verbs:
         if lower_title.startswith(v + " "):
             lower_title = lower_title[len(v):].strip()
             
-    # Если после отрезания ничего не осталось, возвращаем оригинал
     return lower_title.capitalize() if lower_title else original_text.capitalize()
 
 
@@ -377,7 +374,6 @@ class LLMAssistant:
         date = parse_date_expression(date_text) if date_text else None
         time = parse_time_expression(time_text) if time_text else None
         
-        # --- ОБРАБОТКА ПОВТОРЕНИЙ ---
         rec_text = data.get("recurrence_text", "").lower() if data.get("recurrence_text") else ""
         recurrence = None
         if any(w in rec_text for w in ["каждый день", "ежедневно", "кажется день"]): 

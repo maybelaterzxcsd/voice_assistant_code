@@ -1,4 +1,5 @@
 import random
+import re
 from datetime import datetime
 
 
@@ -45,8 +46,7 @@ def get_response(template_key: str, **kwargs) -> str:
     templates = RESPONSES.get(template_key, RESPONSES["unknown"])
     response = random.choice(templates).format(**kwargs)
     
-    # Убираем двойные пробелы (если human_time пустой, не будет лишнего пробела)
-    return " ".join(response.split())
+    return re.sub(r'[ \t]+', ' ', response).strip()
 
 
 RESPONSES = {
